@@ -1,101 +1,96 @@
-import Image from "next/image";
+// app/page.tsx
+import axios from "axios";
+import PokemonList from "../components/PokemonList";
+import FilterByType from "../components/FilterByType";
+import Pagination from "../components/Pagination";
+import {
+  Pokemon,
+  PokemonListResponse,
+  PokemonResponse,
+  PokemonType,
+} from "../types/pokemon";
 
-export default function Home() {
+export const POKEMON_API_URL = "https://pokeapi.co/api/v2";
+export const LIMIT_ITEMS = 48;
+
+async function fetchPokemonByType(type: string) {
+  const { data } = await axios.get(`${POKEMON_API_URL}/type/${type}`);
+  return data.pokemon.map((p: PokemonResponse) => ({
+    name: p.pokemon.name,
+    url: p.pokemon.url,
+    id: parseInt(p.pokemon.url.split("/").slice(-2, -1)[0], 10),
+  }));
+}
+
+export function intersectPokemons(
+  lists: { name: string; url: string; id: number }[][]
+) {
+  return lists.reduce((acc, list) => {
+    return acc.filter((pokemon) => list.some((p) => p.name === pokemon.name));
+  });
+}
+
+export async function fetchPokemonList(
+  page: number,
+  selectedTypes: string[]
+): Promise<PokemonListResponse> {
+  if (selectedTypes.length === 0) {
+    const offset = (page - 1) * LIMIT_ITEMS;
+    const { data } = await axios.get(
+      `${POKEMON_API_URL}/pokemon?limit=${LIMIT_ITEMS}&offset=${offset}`
+    );
+    const results = data.results.map((p: Pokemon) => ({
+      ...p,
+      id: parseInt(p.url.split("/").slice(-2, -1)[0], 10),
+    }));
+    return { results, count: data.count };
+  }
+
+  // Fetch Pokémon for each type
+  const allResults = await Promise.all(selectedTypes.map(fetchPokemonByType));
+
+  // AND logic: Find Pokémon that exist in all selected types
+  const filteredPokemon = allResults.reduce((acc, currentType) =>
+    acc.filter((pokemon: Pokemon) =>
+      currentType.some((p: Pokemon) => p.id === pokemon.id)
+    )
+  );
+
+  const offset = (page - 1) * LIMIT_ITEMS;
+  const paginatedResults = filteredPokemon.slice(offset, offset + LIMIT_ITEMS);
+
+  return { results: paginatedResults, count: filteredPokemon.length };
+}
+
+export async function fetchPokemonTypes(): Promise<PokemonType[]> {
+  const { data } = await axios.get(`${POKEMON_API_URL}/type`);
+  return data.results;
+}
+
+export default async function Home({
+  searchParams,
+}: {
+  searchParams: { type?: string | string[]; page?: string };
+}) {
+  const page = parseInt(searchParams.page || "1", 10);
+  const selectedTypes = Array.isArray(searchParams.type)
+    ? (searchParams.type.filter(Boolean) as string[])
+    : ([searchParams.type].filter(Boolean) as string[]);
+
+  const [pokemonList, types] = await Promise.all([
+    fetchPokemonList(page, selectedTypes),
+    fetchPokemonTypes(),
+  ]);
+
   return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-8 row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="https://nextjs.org/icons/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-semibold">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
-
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="https://nextjs.org/icons/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:min-w-44"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
-        </div>
-      </main>
-      <footer className="row-start-3 flex gap-6 flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+    <div>
+      <FilterByType
+        types={types}
+        selectedTypes={selectedTypes}
+        count={pokemonList.count}
+      />
+      <PokemonList pokemons={pokemonList.results} />
+      <Pagination currentPage={page} total={pokemonList.count} />
     </div>
   );
 }
